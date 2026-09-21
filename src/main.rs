@@ -4,25 +4,25 @@ use std::error::Error;
 use std::fs;
 use std::string::FromUtf8Error;
 
-
 #[derive(Debug)]
 struct Extra {
     len: usize,
-    data: Vec<u8>
+    data: Vec<u8>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let data: Vec<u8> = fs::read("compressed.txt.gz")?;
+    let data: Vec<u8> = fs::read("compressed_file.txt.gz")?;
 
     let id1 = data[0];
     let id2 = data[1];
-    let cm= data[2];
+    let cm = data[2];
     let flags = data[3];
-    let mtime= u32::from_le_bytes(data[4..8].try_into()?);
+    let mtime = u32::from_le_bytes(data[4..8].try_into()?);
     let extra_flags = data[8];
     let os = data[9];
 
-    println!("
+    println!(
+        "
 id1: {}
 id2: {}
 cm: {}
@@ -30,7 +30,9 @@ flags: {:08b}
 mtime: {:?}
 extra_flags: {}
 os: {}
-    ", id1, id2, cm, flags, mtime, extra_flags, os);
+    ",
+        id1, id2, cm, flags, mtime, extra_flags, os
+    );
 
     let mut byte_cursor = 10usize;
 
@@ -50,7 +52,7 @@ os: {}
     //     byte_cursor += 1;
     // }
 
-    let inflated = huffman::inflate(&data, &mut byte_cursor);
+    let inflated = huffman::inflate(&data[byte_cursor..data.len()].to_vec());
 
     let crc32 = u32::from_le_bytes(data[byte_cursor..byte_cursor + 4].try_into()?);
     byte_cursor += 4;
@@ -73,11 +75,21 @@ fn parse_extra(flags: u8, data: &Vec<u8>, cursor: &mut usize) -> Option<Extra> {
         *cursor += 1;
         let xdata = &data[*cursor..*cursor + xlen];
         *cursor += xlen;
-        Some(Extra { len: xlen, data: Vec::from(xdata) })
-    } else {None}
+        Some(Extra {
+            len: xlen,
+            data: Vec::from(xdata),
+        })
+    } else {
+        None
+    }
 }
 
-fn parse_string_field(mask: u8, flags: u8, data: &Vec<u8>, cursor: &mut usize) -> Result<Option<String>, FromUtf8Error> {
+fn parse_string_field(
+    mask: u8,
+    flags: u8,
+    data: &Vec<u8>,
+    cursor: &mut usize,
+) -> Result<Option<String>, FromUtf8Error> {
     if mask & flags != 0 {
         let mut chars: Vec<u8> = vec![];
         let mut char = data[*cursor];
@@ -95,10 +107,14 @@ fn parse_string_field(mask: u8, flags: u8, data: &Vec<u8>, cursor: &mut usize) -
     }
 }
 
-fn parse_crc16(flags: u8, data: &Vec<u8>, cursor: &mut usize) -> Result<Option<u16>, Box<dyn Error>> {
+fn parse_crc16(
+    flags: u8,
+    data: &Vec<u8>,
+    cursor: &mut usize,
+) -> Result<Option<u16>, Box<dyn Error>> {
     let crc16_mask = 1 << 1;
     if crc16_mask & flags != 0 {
-        let crc16 =u16::from_le_bytes(data[*cursor..*cursor + 2].try_into()?);
+        let crc16 = u16::from_le_bytes(data[*cursor..*cursor + 2].try_into()?);
         *cursor += 2;
         Ok(Some(crc16))
     } else {
