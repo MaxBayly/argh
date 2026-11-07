@@ -4,13 +4,13 @@ pub struct BtypeError;
 #[derive(Debug, Clone)]
 pub struct NotEnoughBitsError;
 
-struct BitReader<'a> {
+pub struct BitReader<'a> {
     data: &'a [u8],
     bit_pos: usize,
 }
 
 impl<'a> BitReader<'a> {
-    fn new(data: &'a [u8]) -> Self {
+    pub fn new(data: &'a [u8]) -> Self {
         Self { data, bit_pos: 0 }
     }
 
@@ -31,25 +31,51 @@ impl<'a> BitReader<'a> {
     //     
     // }
 
-    fn read_bits(&mut self, mut n: u16) -> Option<u8> {
+    pub fn read_bits(&mut self, mut n: u16) -> Option<u16> {
         if self.bit_pos + n as usize >= self.data.len() * 8 {
             return None;
         }
 
-        let mut byte = self.data[self.bit_pos / 8];
-        let lower_bit = 7 - (self.bit_pos % 8) as u16;
+        let mut byte: u8;
+        let mut first_bit = 7 - (self.bit_pos % 8) as u16;
         
         let mut res: u16 = 0;
         
-        while lower_bit < (n - 1) {
-            byte = (byte >> (lower_bit - (n - 1))) & ((1 << n) - 1);
+        while first_bit < (n - 1) {
+            byte = self.data[self.bit_pos / 8];
+            if first_bit == 7 {
+                res <<= 8;
+                res |= byte as u16;
+
+            } else {
+                res <<= n;
+                res |= (byte & ((1 << (first_bit + 1)) - 1)) as u16;
+            }
+            self.bit_pos += (first_bit + 1) as usize;
+            n -= first_bit + 1;
+            first_bit = 7;
         }
+
+        byte = self.data[self.bit_pos / 8];
 
         self.bit_pos += n as usize;
         // we shift till the upper bit (so lower bit + n) is in LSB
         // then bitwise AND with just the ones in the lower n positions
         // found by subtracting 1 from the next power of 2 after n
-        Some((byte >> (lower_bit - (n - 1))) & ((1 << n) - 1))
+        let lower_byte = (byte >> (first_bit - (n - 1))) & ((1 << n) - 1);
+        res <<= n;
+        res |= lower_byte as u16;
+        Some(res)
+    }
+
+    fn read_le_bits(&mut self, n: u16) -> Option<u16> {
+        let mut res: u16 = 0;
+        for i in 0..n {
+            let bit = self.read_bit().unwrap() as u16; //todo - fix unwrap
+            res |= (bit << i) as u16;
+        }
+
+        Some(res)
     }
 }
 
@@ -162,12 +188,12 @@ fn decode(length_codes: &HuffmanTable, bit_reader: &mut BitReader) -> Vec<u8> {
             output.push(decoded as u8);
         } else if 256 < decoded && decoded <= 258 {
             let length = decode_length(decoded, bit_reader) as usize;
-            let distance_code = bit_reader.read_bits(5).unwrap_or(0);
+            let distance_code = bit_reader.read_bits(5).unwrap_or(0) as u8;
 
             let distance = decode_distance(distance_code, bit_reader) as usize;
 
             // go back distance bytes and copy length bytes from there
-            let start = output.len() - distance as usize;
+            let start = output.len() - distance;
             let mut copied: Vec<u8> = output[start..start + length].to_vec();
             output.append(&mut copied);
         }
@@ -193,7 +219,7 @@ fn decode_distance(distance_code: u8, bit_reader: &mut BitReader) -> u16 {
         (distance_code + 1) as u16
     } else {
         let extra_bits = ((distance_code - 4) / 2) + 1;
-        ((distance_code + 1) + bit_reader.read_bits(extra_bits as u16).unwrap_or(0)) as u16
+        (distance_code + 1) as u16 + bit_reader.read_bits(extra_bits as u16).unwrap_or(0)
     }
 }
 

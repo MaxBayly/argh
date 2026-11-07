@@ -3,6 +3,7 @@ mod huffman;
 use std::error::Error;
 use std::fs;
 use std::string::FromUtf8Error;
+use crate::huffman::BitReader;
 
 #[derive(Debug)]
 struct Extra {
@@ -12,6 +13,11 @@ struct Extra {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let data: Vec<u8> = fs::read("compressed_file.txt.gz")?;
+
+    let mut bit_reader = BitReader::new(&data);
+
+    // let test_bytes = bit_reader.read_bits(6);
+    // let big_read = bit_reader.read_bits(13);
 
     let id1 = data[0];
     let id2 = data[1];
