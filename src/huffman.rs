@@ -197,16 +197,19 @@ fn decode(length_codes: &HuffmanTable, bit_reader: &mut BitReader) -> Vec<u8> {
         decoded = get_symbol(bit_reader, length_codes).unwrap_or(0);
         if decoded < 256 {
             output.push(decoded as u8);
-        } else if 256 < decoded && decoded <= 258 {
+        } else if 256 < decoded && decoded <= 285 {
             let length = decode_length(decoded, bit_reader) as usize;
             let distance_code = bit_reader.read_be_bits(5).unwrap_or(0) as u8;
 
             let distance = decode_distance(distance_code, bit_reader) as usize;
 
             // go back distance bytes and copy length bytes from there
+            // the deflate algorithm deliberately sets up overlaps, so bytes must be appended one
+            // at a time so that you can copy bytes from past the end of the original vector
             let start = output.len() - distance;
-            let mut copied: Vec<u8> = output[start..start + length].to_vec();
-            output.append(&mut copied);
+            for i in 0..length {
+                output.push(output[start - (length - i)])
+            }
         }
     }
 
