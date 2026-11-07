@@ -20,7 +20,7 @@ impl<'a> BitReader<'a> {
         }
 
         let byte = self.data[self.bit_pos / 8];
-        let bit = 7 - (self.bit_pos % 8);
+        let bit = self.bit_pos % 8;
 
         self.bit_pos += 1;
 
@@ -71,8 +71,19 @@ impl<'a> BitReader<'a> {
     fn read_le_bits(&mut self, n: u16) -> Option<u16> {
         let mut res: u16 = 0;
         for i in 0..n {
-            let bit = self.read_bit().unwrap() as u16; //todo - fix unwrap
-            res |= (bit << i) as u16;
+            let bit = self.read_bit()? as u16; //todo - fix unwrap
+            res |= bit << i;
+        }
+
+        Some(res)
+    }
+
+    fn read_be_bits(&mut self, n: u16) -> Option<u16> {
+        let mut res: u16 = 0;
+        for i in 0..n {
+            let bit = self.read_bit()? as u16;
+            res <<= 1;
+            res |= bit;
         }
 
         Some(res)
@@ -83,7 +94,7 @@ pub fn inflate(data: &Vec<u8>) -> Result<Vec<u8>, BtypeError> {
     let mut bit_reader = BitReader::new(data);
 
     let bfinal = bit_reader.read_bit().ok_or(BtypeError)?;
-    let btype =bit_reader.read_bits(2).ok_or(BtypeError)?;
+    let btype =bit_reader.read_le_bits(2).ok_or(BtypeError)?;
 
     println!("{}. {}", bfinal, btype);
 
@@ -188,7 +199,7 @@ fn decode(length_codes: &HuffmanTable, bit_reader: &mut BitReader) -> Vec<u8> {
             output.push(decoded as u8);
         } else if 256 < decoded && decoded <= 258 {
             let length = decode_length(decoded, bit_reader) as usize;
-            let distance_code = bit_reader.read_bits(5).unwrap_or(0) as u8;
+            let distance_code = bit_reader.read_be_bits(5).unwrap_or(0) as u8;
 
             let distance = decode_distance(distance_code, bit_reader) as usize;
 
@@ -207,7 +218,7 @@ fn decode_length(length_code: u16, bit_reader: &mut BitReader) -> u16 {
         length_code - 254
     } else if length_code < 285 {
         let extra_bits = ((length_code - 265) / 4) + 1;
-        (length_code - 254) + bit_reader.read_bits(extra_bits).unwrap_or(0) as u16
+        (length_code - 254) + bit_reader.read_le_bits(extra_bits).unwrap_or(0) as u16
     } else {
         // length code is 285
         258
@@ -219,7 +230,7 @@ fn decode_distance(distance_code: u8, bit_reader: &mut BitReader) -> u16 {
         (distance_code + 1) as u16
     } else {
         let extra_bits = ((distance_code - 4) / 2) + 1;
-        (distance_code + 1) as u16 + bit_reader.read_bits(extra_bits as u16).unwrap_or(0)
+        (distance_code + 1) as u16 + bit_reader.read_le_bits(extra_bits as u16).unwrap_or(0)
     }
 }
 
